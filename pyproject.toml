@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-medical-coding-assistant"
+version = "0.1.0"
+description = "Medical Coding Assistant environment for OpenEnv"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core]>=0.2.2",
+    "openai>=1.40.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+server = "medical_coding_assistant.server.app:main"
+simulate-learning = "medical_coding_assistant.simulate_learning:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["medical_coding_assistant", "medical_coding_assistant.server"]
+package-dir = { "medical_coding_assistant" = ".", "medical_coding_assistant.server" = "server" }

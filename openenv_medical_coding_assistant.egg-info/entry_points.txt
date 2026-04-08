@@ -1,0 +1,3 @@
+[console_scripts]
+server = medical_coding_assistant.server.app:main
+simulate-learning = medical_coding_assistant.simulate_learning:main
