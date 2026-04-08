@@ -188,6 +188,14 @@ Run:
 docker run --rm -p 8000:8000 medical-coding-assistant:latest
 ```
 
+## Hugging Face Spaces
+
+This repository is now ready to publish as a Hugging Face Docker Space.
+
+Use the repo root `Dockerfile` and keep the existing README metadata block with `sdk: docker` and `app_port: 8000`. After pushing to Hugging Face, the Space will start the FastAPI app from `server.app:app` on port `8000`.
+
+Live Space: [sankar-raul/ICD-10-code-predictor-env](https://huggingface.co/spaces/sankar-raul/ICD-10-code-predictor-env)
+
 ## Usage Example
 
 ```python
