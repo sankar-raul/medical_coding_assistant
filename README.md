@@ -2,7 +2,7 @@
 title: Medical Coding Assistant Environment Server
 emoji: 🏥
 colorFrom: blue
-colorTo: teal
+colorTo: gray
 sdk: docker
 pinned: false
 app_port: 8000
