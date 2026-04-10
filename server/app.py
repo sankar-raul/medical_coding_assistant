@@ -24,6 +24,11 @@ app = create_app(
 )
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"status": "ok", "service": "medical-coding-assistant"}
+
+
 def main() -> None:
     import argparse
     import uvicorn

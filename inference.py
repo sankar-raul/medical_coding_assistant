@@ -6,8 +6,10 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
+from typing import Callable
 
 from openai import OpenAI
 
@@ -25,6 +27,10 @@ load_dotenv()
 
 HF_ROUTER_BASE_URL = os.environ.get("API_BASE_URL")
 DEFAULT_MODEL = os.environ.get("MODEL_NAME")
+
+
+def emit_log(tag: str, payload: dict[str, object]) -> None:
+    print(f"[{tag}] {json.dumps(payload, separators=(',', ':'))}", flush=True)
 
 
 def build_prompt(task_id: str) -> str:
@@ -73,7 +79,9 @@ def parse_action(raw_text: str) -> MedicalCodingAction:
     return MedicalCodingAction(**payload)
 
 
-def run_openai_baseline(model: str) -> list[dict[str, object]]:
+def run_openai_baseline(
+    model: str, on_step: Callable[[dict[str, object]], None] | None = None
+) -> list[dict[str, object]]:
     load_dotenv()
     hf_token = os.environ.get("HF_TOKEN")
     if not hf_token:
@@ -134,11 +142,15 @@ def run_openai_baseline(model: str) -> list[dict[str, object]]:
         )
         if error_message:
             results[-1]["error"] = error_message
+        if on_step:
+            on_step(results[-1])
 
     return results
 
 
-def run_heuristic_reference() -> list[dict[str, object]]:
+def run_heuristic_reference(
+    on_step: Callable[[dict[str, object]], None] | None = None
+) -> list[dict[str, object]]:
     env = MedicalCodingEnvironment()
     results: list[dict[str, object]] = []
     for task_id in TASK_SEQUENCE:
@@ -163,6 +175,8 @@ def run_heuristic_reference() -> list[dict[str, object]]:
                 "feedback": result.grader_feedback,
             }
         )
+        if on_step:
+            on_step(results[-1])
     return results
 
 
@@ -176,32 +190,57 @@ def main() -> None:
         help="Use the OpenAI-compatible HF router baseline or the offline reference heuristic.",
     )
     args = parser.parse_args()
+    resolved_model = args.model if args.mode == "openai" else "reference-heuristic"
+
+    emit_log(
+        "START",
+        {
+            "mode": args.mode,
+            "model": resolved_model,
+            "task_count": len(TASK_SEQUENCE),
+            "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    step_index = 0
+
+    def on_step(result: dict[str, object]) -> None:
+        nonlocal step_index
+        step_index += 1
+        payload: dict[str, object] = {
+            "index": step_index,
+            "task_id": result["task_id"],
+            "difficulty": result["difficulty"],
+            "score": round(float(result["score"]), 4),
+            "reward": round(float(result["reward"]), 4),
+            "done": bool(result["done"]),
+        }
+        if "error" in result:
+            payload["error"] = result["error"]
+        emit_log("STEP", payload)
 
     try:
         results = (
-            run_openai_baseline(args.model)
+            run_openai_baseline(args.model, on_step=on_step)
             if args.mode == "openai"
-            else run_heuristic_reference()
+            else run_heuristic_reference(on_step=on_step)
         )
+        fatal_error = ""
     except Exception as exc:
-        fallback_results = run_heuristic_reference()
-        payload = {
-            "mode": args.mode,
-            "model": args.model if args.mode == "openai" else "reference-heuristic",
-            "fatal_error": f"{type(exc).__name__}: {exc}",
-            "macro_average": round(mean(float(result["score"]) for result in fallback_results), 4),
-            "results": fallback_results,
-        }
-        print(json.dumps(payload, indent=2))
-        return
+        fatal_error = f"{type(exc).__name__}: {exc}"
+        results = run_heuristic_reference(on_step=on_step)
     macro_average = mean(float(result["score"]) for result in results)
-    payload = {
+    end_payload: dict[str, object] = {
         "mode": args.mode,
-        "model": args.model if args.mode == "openai" else "reference-heuristic",
+        "model": resolved_model,
+        "status": "ok" if not fatal_error else "degraded",
+        "tasks_completed": len(results),
         "macro_average": round(macro_average, 4),
-        "results": results,
+        "finished_at_utc": datetime.now(timezone.utc).isoformat(),
     }
-    print(json.dumps(payload, indent=2))
+    if fatal_error:
+        end_payload["fatal_error"] = fatal_error
+    emit_log("END", end_payload)
 
 
 if __name__ == "__main__":
