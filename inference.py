@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 HF_ROUTER_BASE_URL = os.environ.get("API_BASE_URL")
+PROXY_API_KEY = os.environ.get("API_KEY")
 DEFAULT_MODEL = os.environ.get("MODEL_NAME")
 
 
@@ -83,15 +84,15 @@ def run_openai_baseline(
     model: str, on_step: Callable[[dict[str, object]], None] | None = None
 ) -> list[dict[str, object]]:
     load_dotenv()
-    hf_token = os.environ.get("HF_TOKEN")
-    if not hf_token:
-        raise RuntimeError("HF_TOKEN is required for the OpenAI-compatible baseline.")
+    api_key = os.environ.get("API_KEY") or PROXY_API_KEY
+    if not api_key:
+        raise RuntimeError("API_KEY is required for the OpenAI-compatible baseline.")
     if not HF_ROUTER_BASE_URL:
         raise RuntimeError("API_BASE_URL is required for the OpenAI-compatible baseline.")
     if not model:
         raise RuntimeError("Model name is required. Set MODEL_NAME or pass --model.")
 
-    client = OpenAI(base_url=HF_ROUTER_BASE_URL, api_key=hf_token)
+    client = OpenAI(base_url=HF_ROUTER_BASE_URL, api_key=api_key)
     env = MedicalCodingEnvironment()
     results: list[dict[str, object]] = []
 
@@ -225,15 +226,17 @@ def main() -> None:
             if args.mode == "openai"
             else run_heuristic_reference(on_step=on_step)
         )
+        status = "ok"
         fatal_error = ""
     except Exception as exc:
         fatal_error = f"{type(exc).__name__}: {exc}"
-        results = run_heuristic_reference(on_step=on_step)
-    macro_average = mean(float(result["score"]) for result in results)
+        status = "failed"
+        results = []
+    macro_average = mean(float(result["score"]) for result in results) if results else 0.0
     end_payload: dict[str, object] = {
         "mode": args.mode,
         "model": resolved_model,
-        "status": "ok" if not fatal_error else "degraded",
+        "status": status,
         "tasks_completed": len(results),
         "macro_average": round(macro_average, 4),
         "finished_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -241,6 +244,8 @@ def main() -> None:
     if fatal_error:
         end_payload["fatal_error"] = fatal_error
     emit_log("END", end_payload)
+    if fatal_error:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
