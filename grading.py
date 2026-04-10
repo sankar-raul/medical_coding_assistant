@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from .tasks import TaskCase
 
+SCORE_EPSILON = 1e-4
+
 
 @dataclass(frozen=True)
 class Submission:
@@ -48,7 +50,7 @@ def _unique_codes(codes: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def grade_submission(task: TaskCase, submission: Submission) -> GradeResult:
-    """Return a deterministic score in the range [0.0, 1.0]."""
+    """Return a deterministic score strictly in the range (0.0, 1.0)."""
 
     primary = _normalize_code(submission.primary_code)
     secondary = _unique_codes(submission.secondary_codes)
@@ -91,5 +93,5 @@ def grade_submission(task: TaskCase, submission: Submission) -> GradeResult:
     else:
         feedback.append("Review/escalation flag is incorrect.")
 
-    score = max(0.0, min(1.0, round(score, 4)))
+    score = max(SCORE_EPSILON, min(1.0 - SCORE_EPSILON, round(score, 4)))
     return GradeResult(task_id=task.task_id, score=score, feedback=tuple(feedback))
