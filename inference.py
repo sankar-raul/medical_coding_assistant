@@ -32,6 +32,10 @@ def emit_log(tag: str, payload: dict[str, object]) -> None:
     print(f"[{tag}] {json.dumps(payload, separators=(',', ':'))}", flush=True)
 
 
+def normalize_open_interval(value: float, eps: float = 1e-4) -> float:
+    return min(1.0 - eps, max(eps, float(value)))
+
+
 def build_prompt(task_id: str) -> str:
     task = TASKS[task_id]
     return (
@@ -143,8 +147,8 @@ def run_openai_baseline(
             {
                 "task_id": task_id,
                 "difficulty": reset_obs.difficulty,
-                "score": grade.score,
-                "reward": step_obs.reward,
+                "score": normalize_open_interval(float(grade.score)),
+                "reward": normalize_open_interval(float(step_obs.reward)),
                 "reward_breakdown": step_obs.reward_breakdown.model_dump(),
                 "done": step_obs.done,
                 "feedback": list(grade.feedback),
@@ -179,8 +183,8 @@ def run_heuristic_reference(
             {
                 "task_id": task_id,
                 "difficulty": task.difficulty,
-                "score": result.metadata["grader"]["score"],
-                "reward": result.reward,
+                "score": normalize_open_interval(float(result.metadata["grader"]["score"])),
+                "reward": normalize_open_interval(float(result.reward)),
                 "reward_breakdown": result.reward_breakdown.model_dump(),
                 "done": result.done,
                 "feedback": result.grader_feedback,
