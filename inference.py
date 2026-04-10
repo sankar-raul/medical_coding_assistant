@@ -25,9 +25,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-HF_ROUTER_BASE_URL = os.environ.get("API_BASE_URL")
-PROXY_API_KEY = os.environ.get("API_KEY")
-DEFAULT_MODEL = os.environ.get("MODEL_NAME")
+DEFAULT_MODEL = os.environ.get("MODEL_NAME") or "gpt-4o-mini"
 
 
 def emit_log(tag: str, payload: dict[str, object]) -> None:
@@ -84,17 +82,24 @@ def run_openai_baseline(
     model: str, on_step: Callable[[dict[str, object]], None] | None = None
 ) -> list[dict[str, object]]:
     load_dotenv()
-    api_key = os.environ.get("API_KEY") or PROXY_API_KEY
-    client: OpenAI | None = None
-    config_error = ""
-    if not api_key:
-        config_error = "RuntimeError: API_KEY is required for the OpenAI-compatible baseline."
-    elif not HF_ROUTER_BASE_URL:
-        config_error = "RuntimeError: API_BASE_URL is required for the OpenAI-compatible baseline."
-    elif not model:
-        config_error = "RuntimeError: Model name is required. Set MODEL_NAME or pass --model."
+    api_base_url = ""
+    api_key = ""
+    try:
+        # Validator requirement: use the injected proxy variables directly.
+        api_base_url = os.environ["API_BASE_URL"]
+        api_key = os.environ["API_KEY"]
+    except KeyError as exc:
+        missing_key = str(exc).strip("'")
+        config_error = f"RuntimeError: Missing required environment variable: {missing_key}"
+        api_base_url = ""
+        api_key = ""
     else:
-        client = OpenAI(base_url=HF_ROUTER_BASE_URL, api_key=api_key)
+        config_error = ""
+
+    client: OpenAI | None = None
+    resolved_model = model or DEFAULT_MODEL
+    if not config_error:
+        client = OpenAI(base_url=api_base_url, api_key=api_key)
     env = MedicalCodingEnvironment()
     results: list[dict[str, object]] = []
 
@@ -113,7 +118,7 @@ def run_openai_baseline(
         else:
             try:
                 response = client.chat.completions.create(
-                    model=model,
+                    model=resolved_model,
                     temperature=0,
                     messages=[
                         {"role": "system", "content": "You output only JSON."},
@@ -196,7 +201,7 @@ def main() -> None:
         help="Use the OpenAI-compatible HF router baseline or the offline reference heuristic.",
     )
     args = parser.parse_args()
-    resolved_model = args.model if args.mode == "openai" else "reference-heuristic"
+    resolved_model = (args.model or DEFAULT_MODEL) if args.mode == "openai" else "reference-heuristic"
 
     emit_log(
         "START",
