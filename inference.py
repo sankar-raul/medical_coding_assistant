@@ -19,9 +19,12 @@ from medical_coding_assistant.grading import Submission, grade_submission
 from medical_coding_assistant.models import MedicalCodingAction
 from medical_coding_assistant.server.medical_coding_environment import MedicalCodingEnvironment
 from medical_coding_assistant.tasks import TASK_SEQUENCE, TASKS
+from dotenv import load_dotenv
 
-HF_ROUTER_BASE_URL = "https://router.huggingface.co/v1"
-DEFAULT_MODEL = "Qwen/Qwen2.5-72B-Instruct"
+load_dotenv()
+
+HF_ROUTER_BASE_URL = os.environ.get("API_BASE_URL")
+DEFAULT_MODEL = os.environ.get("MODEL_NAME")
 
 
 def build_prompt(task_id: str) -> str:
@@ -40,16 +43,39 @@ def build_prompt(task_id: str) -> str:
 
 
 def parse_action(raw_text: str) -> MedicalCodingAction:
+    def _coerce_bool(value: object, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "n", "off", ""}:
+                return False
+        return default
+
     start = raw_text.find("{")
     end = raw_text.rfind("}")
     if start == -1 or end == -1:
         raise ValueError(f"Model response is not valid JSON: {raw_text}")
     payload = json.loads(raw_text[start : end + 1])
+    payload["request_hint"] = _coerce_bool(payload.get("request_hint"), default=False)
+    payload["needs_review"] = _coerce_bool(payload.get("needs_review"), default=False)
+    payload["finalize"] = _coerce_bool(payload.get("finalize"), default=False)
+    secondary_codes = payload.get("secondary_codes")
+    payload["secondary_codes"] = secondary_codes if isinstance(secondary_codes, list) else []
+    primary_code = payload.get("primary_code")
+    payload["primary_code"] = primary_code if isinstance(primary_code, str) else ""
     return MedicalCodingAction(**payload)
 
 
 def run_openai_baseline(model: str) -> list[dict[str, object]]:
-    hf_token = os.environ.get("HF_TOKEN")
+    load_dotenv()
+    hf_token = os.environ.get("HF_TOKEN") or hf_token
     if not hf_token:
         raise RuntimeError("HF_TOKEN is required for the OpenAI-compatible baseline.")
 
